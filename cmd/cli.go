@@ -55,7 +55,7 @@ func main() {
 
 	sort.Strings(absentees)
 
-	message := fmt.Sprintf(":palm_tree: *Out today* (%d):\n", len(absentees))
+	message := fmt.Sprintf(":x: *Out today* (%d):\n", len(absentees))
 	for _, absentee := range absentees {
 		message += fmt.Sprintf("\n- %s", absentee)
 	}
