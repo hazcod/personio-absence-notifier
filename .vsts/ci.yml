@@ -21,6 +21,7 @@ stages:
     vmImage: ubuntu-latest
   jobs:
   -
+    job: run
     steps:
     -
       task: GoTool@0
