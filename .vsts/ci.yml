@@ -6,8 +6,8 @@ trigger:
 
 schedules:
 -
-  cron: '0 1 * * *'
-  displayName: 'Daily 1am run of PersonioAbscences'
+  cron: '0 4 * * *'
+  displayName: 'Daily 6am (EU/brussels) run of PersonioAbscences'
   branches:
     include: [ main ]
   always: true
