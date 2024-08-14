@@ -6,6 +6,11 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
+)
+
+const (
+	authURL = "https://api.personio.de/v1/auth"
 )
 
 type authResponse struct {
@@ -20,8 +25,19 @@ type authResponse struct {
 	} `json:"error"`
 }
 
+type tokenFactory struct {
+	expires time.Time
+	value   string
+}
+
 func (p *Personio) getToken() (string, error) {
-	url := "https://api.personio.de/v1/auth"
+	if p.token == nil {
+		p.token = &tokenFactory{}
+	}
+
+	if p.token.expires.After(time.Now().Add(time.Second * 5)) {
+		return p.token.value, nil
+	}
 
 	payload := struct {
 		ClientID string `json:"client_id"`
@@ -38,7 +54,7 @@ func (p *Personio) getToken() (string, error) {
 
 	p.logger.WithField("client_id", p.clientID).Debug("authenticating to personio")
 
-	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(payloadBytes)))
+	req, err := http.NewRequest(http.MethodPost, authURL, strings.NewReader(string(payloadBytes)))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -66,7 +82,15 @@ func (p *Personio) getToken() (string, error) {
 		return "", fmt.Errorf("failed with status code %d: %s", res.StatusCode, response.Error.Message)
 	}
 
-	p.logger.Debug("successfully retrieved token")
+	if response.Data.Token == "" {
+		return "", fmt.Errorf("received empty token from personio")
+	}
 
-	return response.Data.Token, nil
+	p.token.value = response.Data.Token
+	p.token.expires = time.Now().Add(time.Duration(response.Data.ExpiresIn) * time.Second)
+
+	p.logger.WithField("expires", p.token.expires.Format(time.RFC822)).
+		Debug("successfully retrieved new token")
+
+	return p.token.value, nil
 }

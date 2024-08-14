@@ -8,7 +8,7 @@ import (
 	"github.com/hazcod/personio-abscences/pkg/slack"
 	"github.com/sirupsen/logrus"
 	"os"
-	"sort"
+	"slices"
 )
 
 func main() {
@@ -53,7 +53,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	sort.Strings(absentees)
+	slices.Sort(absentees)
 
 	message := fmt.Sprintf(":x: *Out today* (%d):\n", len(absentees))
 	for _, absentee := range absentees {

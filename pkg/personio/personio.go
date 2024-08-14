@@ -7,6 +7,7 @@ type Personio struct {
 	logger   *logrus.Logger
 	clientID string
 	secret   string
+	token    *tokenFactory
 }
 
 func New(l *logrus.Logger, clientID, secret string) (*Personio, error) {
@@ -18,7 +19,7 @@ func New(l *logrus.Logger, clientID, secret string) (*Personio, error) {
 		return nil, fmt.Errorf("clientID or secret is empty")
 	}
 
-	p := Personio{logger: l, clientID: clientID, secret: secret}
+	p := Personio{logger: l, clientID: clientID, secret: secret, token: &tokenFactory{}}
 
 	return &p, nil
 }

@@ -5,7 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
+)
+
+const (
+	timeOffURL = "https://api.personio.de/v1/company/time-offs"
+	queryLimit = 200
 )
 
 type Employee struct {
@@ -78,50 +84,81 @@ type abscenceResponse struct {
 func (p *Personio) GetAbscences() ([]string, error) {
 	token, err := p.getToken()
 	if err != nil {
-		return nil, fmt.Errorf("could not get auth token: %w", err)
-	}
-	if token == "" {
-		return nil, fmt.Errorf("token was empty")
+		return nil, fmt.Errorf("could not get auth value: %w", err)
 	}
 
 	today := time.Now().Format("2006-01-02")
 
-	url := "https://api.personio.de/v1/company/time-offs?limit=200&offset=0&start_date=" + today + "&end_date=" + today
+	var absentees []string
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("could not create request: %w", err)
+	page := 0
+	pages := 1
+
+	for {
+		params := url.Values{}
+		params.Add("limit", fmt.Sprintf("%d", queryLimit))
+		// weird bug where page=0 and page=1 return same results from personio API. so just immediately fetch page=1
+		params.Add("offset", fmt.Sprintf("%d", page+1))
+		params.Add("start_date", today)
+		params.Add("end_date", today)
+
+		fullURL := fmt.Sprintf("%s?%s", timeOffURL, params.Encode())
+
+		req, err := http.NewRequest(http.MethodGet, fullURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("could not create request: %w", err)
+		}
+
+		req.Header.Add("accept", "application/json")
+		req.Header.Add("authorization", "Bearer "+token)
+
+		p.logger.WithField("page", page).WithField("total_pages", pages).WithField("url", fullURL).
+			Debug("fetching abscences")
+
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("could not get abscences: %w", err)
+		}
+
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("could not read abscences: %w", err)
+		}
+
+		var response abscenceResponse
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("could not parse abscences: %w", err)
+		}
+
+		if res.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("could not get abscences: status code %d", res.StatusCode)
+		}
+
+		p.logger.WithField("page", page).WithField("total_pages", pages).WithField("url", fullURL).
+			WithField("returned", len(response.Data)).
+			Debug("received abscences")
+
+		for _, data := range response.Data {
+			absentees = append(absentees,
+				data.Attributes.Employee.Attributes.FirstName.Value+" "+
+					data.Attributes.Employee.Attributes.LastName.Value,
+			)
+		}
+
+		// Determine if there are more pages to fetch
+		p.logger.Tracef("set total pages to %d", response.Metadata.TotalPages)
+
+		if page+1 >= response.Metadata.TotalPages {
+			break
+		}
+
+		pages = response.Metadata.TotalPages
+		page += 1
 	}
 
-	req.Header.Add("accept", "application/json")
-	req.Header.Add("authorization", "Bearer "+token)
-
-	p.logger.Debugf("retrieving abscences from personio")
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("could not get abscences: %w", err)
-	}
-
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("could not read abscences: %w", err)
-	}
-
-	var response abscenceResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("could not parse abscences: %w", err)
-	}
-
-	absentees := make([]string, len(response.Data))
-
-	for i, data := range response.Data {
-		absentees[i] = data.Attributes.Employee.Attributes.FirstName.Value + " " + data.Attributes.Employee.Attributes.LastName.Value
-	}
-
-	p.logger.WithField("total", len(absentees)).Debug("retrieved abscenes")
+	p.logger.WithField("total", len(absentees)).Debug("retrieved abscences")
 
 	return absentees, nil
 }
