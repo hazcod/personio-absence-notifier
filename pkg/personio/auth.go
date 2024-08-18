@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type authResponse struct {
 type tokenFactory struct {
 	expires time.Time
 	value   string
+	lock    sync.Mutex
 }
 
 func (p *Personio) getToken() (string, error) {
@@ -38,6 +40,15 @@ func (p *Personio) getToken() (string, error) {
 	if p.token.expires.After(time.Now().Add(time.Second * 5)) {
 		return p.token.value, nil
 	}
+
+	// fetch new tokens in an atomic way
+	// if a token is already being fetched, wait 100ms and try again
+	if !p.token.lock.TryLock() {
+		time.Sleep(time.Millisecond * 100)
+		return p.getToken()
+	}
+
+	defer p.token.lock.Unlock()
 
 	payload := struct {
 		ClientID string `json:"client_id"`
