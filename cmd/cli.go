@@ -40,16 +40,16 @@ func main() {
 
 	pers, err := personio.New(logger, conf.Personio.ClientID, conf.Personio.Secret)
 	if err != nil {
-		logger.WithError(err).Fatal("failed to create personio client")
+		logger.WithError(err).Fatal("failed to create Personio client")
 	}
 
 	absentees, err := pers.GetAbsences()
 	if err != nil {
-		logger.WithError(err).Fatal("failed to get abscences")
+		logger.WithError(err).Fatal("failed to get absences")
 	}
 
 	if len(absentees) == 0 {
-		logger.Info("no abscences found for today")
+		logger.Info("no absences found for today")
 		os.Exit(0)
 	}
 
@@ -61,11 +61,11 @@ func main() {
 
 	for _, absentee := range absentees {
 		switch absentee.Type {
-		case personio.OFF_FULLDAY:
+		case personio.OffFullday:
 			message += fmt.Sprintf("\n- %s", absentee.FullName)
-		case personio.OFF_MORNING:
+		case personio.OffMorning:
 			message += fmt.Sprintf("\n- %s _(morning)_", absentee.FullName)
-		case personio.OFF_AFTERNOON:
+		case personio.OffAfternoon:
 			message += fmt.Sprintf("\n- %s _(afternoon)_", absentee.FullName)
 		default:
 			logger.WithField("type", absentee.Type).Fatal("unknown type")

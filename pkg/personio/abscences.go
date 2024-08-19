@@ -13,9 +13,18 @@ import (
 const (
 	timeOffURL = "https://api.personio.de/v1/company/time-offs"
 	queryLimit = 200
+
+	OffMorning = iota
+	OffAfternoon
+	OffFullday
 )
 
-type Employee struct {
+type Absentee struct {
+	FullName string
+	Type     uint16
+}
+
+type employee struct {
 	Type       string `json:"type"`
 	Attributes struct {
 		ID struct {
@@ -70,7 +79,7 @@ type abscenceResponse struct {
 					Category string `json:"category"`
 				} `json:"attributes"`
 			} `json:"time_off_type"`
-			Employee    Employee `json:"employee"`
+			Employee    employee `json:"employee"`
 			Certificate struct {
 				Status string `json:"status"`
 			} `json:"certificate"`
@@ -104,28 +113,20 @@ func uniqueSlice(s []string) []string {
 	return result
 }
 
-const (
-	OFF_MORNING = iota
-	OFF_AFTERNOON
-	OFF_FULLDAY
-)
-
-type Absentee struct {
-	FullName string
-	Type     uint16
-}
-
 func (p *Personio) GetAbsences() ([]Absentee, error) {
 	now := time.Now()
+	nowZero := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
-	p.logger.Debugf("retrieving morning absences")
-	morningOff, err := p.retrieveAbsences(now.Add(time.Hour * 9))
+	morningCheckpoint := nowZero.Add(time.Hour * 9)
+	p.logger.WithField("check", morningCheckpoint).Debugf("retrieving morning absences")
+	morningOff, err := p.retrieveAbsences(morningCheckpoint)
 	if err != nil {
 		return nil, fmt.Errorf("could not retrieve morning abscences: %v", err)
 	}
 
-	p.logger.Debugf("retrieving afternoon absences")
-	afternoonOff, err := p.retrieveAbsences(now.Add(time.Hour * 16))
+	afternoonCheckpoint := nowZero.Add(time.Hour * 16)
+	p.logger.WithField("check", afternoonCheckpoint).Debugf("retrieving afternoon absences")
+	afternoonOff, err := p.retrieveAbsences(afternoonCheckpoint)
 	if err != nil {
 		return nil, fmt.Errorf("could not retrieve afternoon abscences: %v", err)
 	}
@@ -139,7 +140,7 @@ func (p *Personio) GetAbsences() ([]Absentee, error) {
 		if isMorningOff && isAfternoonOff {
 			absentees = append(absentees, Absentee{
 				FullName: absentee,
-				Type:     OFF_FULLDAY,
+				Type:     OffFullday,
 			})
 			continue
 		}
@@ -147,7 +148,7 @@ func (p *Personio) GetAbsences() ([]Absentee, error) {
 		if isMorningOff && !isAfternoonOff {
 			absentees = append(absentees, Absentee{
 				FullName: absentee,
-				Type:     OFF_MORNING,
+				Type:     OffMorning,
 			})
 			continue
 		}
@@ -155,7 +156,7 @@ func (p *Personio) GetAbsences() ([]Absentee, error) {
 		if !isMorningOff && isAfternoonOff {
 			absentees = append(absentees, Absentee{
 				FullName: absentee,
-				Type:     OFF_FULLDAY,
+				Type:     OffFullday,
 			})
 			continue
 		}
@@ -182,7 +183,7 @@ func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
 	for {
 		params := url.Values{}
 		params.Add("limit", fmt.Sprintf("%d", queryLimit))
-		// weird bug where page=0 and page=1 return same results from personio API. so just immediately fetch page=1
+		// weird bug where page=0 and page=1 return same results from Pzersonio API. so just immediately fetch page=1
 		params.Add("offset", fmt.Sprintf("%d", page+1))
 		params.Add("start_date", checkDateFormatted)
 		params.Add("end_date", checkDateFormatted)
