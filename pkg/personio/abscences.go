@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -81,13 +82,97 @@ type abscenceResponse struct {
 	Limit  int `json:"limit"`
 }
 
-func (p *Personio) GetAbscences() ([]string, error) {
+func isInslice(item string, list []string) bool {
+	for _, sliceItem := range list {
+		if strings.EqualFold(item, sliceItem) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func uniqueSlice(s []string) []string {
+	inResult := make(map[string]bool)
+	var result []string
+	for _, str := range s {
+		if _, ok := inResult[str]; !ok {
+			inResult[str] = true
+			result = append(result, str)
+		}
+	}
+	return result
+}
+
+const (
+	OFF_MORNING = iota
+	OFF_AFTERNOON
+	OFF_FULLDAY
+)
+
+type Absentee struct {
+	FullName string
+	Type     uint16
+}
+
+func (p *Personio) GetAbsences() ([]Absentee, error) {
+	now := time.Now()
+
+	p.logger.Debugf("retrieving morning absences")
+	morningOff, err := p.retrieveAbsences(now.Add(time.Hour * 9))
+	if err != nil {
+		return nil, fmt.Errorf("could not retrieve morning abscences: %v", err)
+	}
+
+	p.logger.Debugf("retrieving afternoon absences")
+	afternoonOff, err := p.retrieveAbsences(now.Add(time.Hour * 16))
+	if err != nil {
+		return nil, fmt.Errorf("could not retrieve afternoon abscences: %v", err)
+	}
+
+	var absentees []Absentee
+
+	for _, absentee := range uniqueSlice(append(morningOff, afternoonOff...)) {
+		isMorningOff := isInslice(absentee, morningOff)
+		isAfternoonOff := isInslice(absentee, afternoonOff)
+
+		if isMorningOff && isAfternoonOff {
+			absentees = append(absentees, Absentee{
+				FullName: absentee,
+				Type:     OFF_FULLDAY,
+			})
+			continue
+		}
+
+		if isMorningOff && !isAfternoonOff {
+			absentees = append(absentees, Absentee{
+				FullName: absentee,
+				Type:     OFF_MORNING,
+			})
+			continue
+		}
+
+		if !isMorningOff && isAfternoonOff {
+			absentees = append(absentees, Absentee{
+				FullName: absentee,
+				Type:     OFF_FULLDAY,
+			})
+			continue
+		}
+
+		p.logger.Fatalf("unreachable statement in getAbsences")
+	}
+
+	return absentees, nil
+}
+
+func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
 	token, err := p.getToken()
 	if err != nil {
 		return nil, fmt.Errorf("could not get auth value: %w", err)
 	}
 
-	today := time.Now().Format("2006-01-02")
+	checkDateFormatted := checkDate.Format("2006-01-02")
 
 	var absentees []string
 
@@ -99,8 +184,8 @@ func (p *Personio) GetAbscences() ([]string, error) {
 		params.Add("limit", fmt.Sprintf("%d", queryLimit))
 		// weird bug where page=0 and page=1 return same results from personio API. so just immediately fetch page=1
 		params.Add("offset", fmt.Sprintf("%d", page+1))
-		params.Add("start_date", today)
-		params.Add("end_date", today)
+		params.Add("start_date", checkDateFormatted)
+		params.Add("end_date", checkDateFormatted)
 
 		fullURL := fmt.Sprintf("%s?%s", timeOffURL, params.Encode())
 

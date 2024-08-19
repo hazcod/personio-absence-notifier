@@ -8,7 +8,7 @@ import (
 	"github.com/hazcod/personio-abscences/pkg/slack"
 	"github.com/sirupsen/logrus"
 	"os"
-	"slices"
+	"sort"
 )
 
 func main() {
@@ -43,7 +43,7 @@ func main() {
 		logger.WithError(err).Fatal("failed to create personio client")
 	}
 
-	absentees, err := pers.GetAbscences()
+	absentees, err := pers.GetAbsences()
 	if err != nil {
 		logger.WithError(err).Fatal("failed to get abscences")
 	}
@@ -53,11 +53,23 @@ func main() {
 		os.Exit(0)
 	}
 
-	slices.Sort(absentees)
+	sort.Slice(absentees, func(i, j int) bool {
+		return absentees[i].FullName < absentees[j].FullName
+	})
 
 	message := fmt.Sprintf(":x: *Out today* (%d):\n", len(absentees))
+
 	for _, absentee := range absentees {
-		message += fmt.Sprintf("\n- %s", absentee)
+		switch absentee.Type {
+		case personio.OFF_FULLDAY:
+			message += fmt.Sprintf("\n- %s", absentee.FullName)
+		case personio.OFF_MORNING:
+			message += fmt.Sprintf("\n- %s _(morning)_", absentee.FullName)
+		case personio.OFF_AFTERNOON:
+			message += fmt.Sprintf("\n- %s _(afternoon)_", absentee.FullName)
+		default:
+			logger.WithField("type", absentee.Type).Fatal("unknown type")
+		}
 	}
 
 	slacker, err := slack.New(logger, conf.Slack.WebhookURL)
