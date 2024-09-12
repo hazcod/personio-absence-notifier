@@ -179,17 +179,14 @@ func capitalize(str string) string {
 	return strings.ToUpper(str[:1]) + str[1:]
 }
 
-func tryGetGivenName(employee apiEmployee) (string, error) {
+func tryGetGivenName(email, firstName, lastName string) (string, error) {
 	emailParts := strings.SplitN(
-		strings.SplitN(employee.Attributes.Employee.Attributes.Email.Value, "@", 2)[0],
+		strings.SplitN(email, "@", 2)[0],
 		".", 2,
 	)
 
 	if len(emailParts) != 2 {
-		return fmt.Sprintf("%s %s",
-			employee.Attributes.Employee.Attributes.FirstName.Value,
-			employee.Attributes.Employee.Attributes.LastName.Value,
-		), nil
+		return fmt.Sprintf("%s %s", capitalize(firstName), capitalize(lastName)), nil
 	}
 
 	return fmt.Sprintf("%s %s", capitalize(emailParts[0]), capitalize(emailParts[1])), nil
@@ -254,7 +251,11 @@ func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
 			Debug("received abscences")
 
 		for _, data := range response.Data {
-			fullName, err := tryGetGivenName(data)
+			fullName, err := tryGetGivenName(
+				data.Attributes.Employee.Attributes.Email.Value,
+				data.Attributes.Employee.Attributes.FirstName.Value,
+				data.Attributes.Employee.Attributes.LastName.Value,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("could not get full name for %s: %w",
 					data.Attributes.Employee.Attributes.Email.Value, err)
