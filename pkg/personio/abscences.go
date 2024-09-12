@@ -54,6 +54,33 @@ type employee struct {
 	} `json:"attributes"`
 }
 
+type apiEmployee struct {
+	Type       string `json:"type"`
+	Attributes struct {
+		ID           int     `json:"id"`
+		Status       string  `json:"status"`
+		StartDate    string  `json:"start_date"`
+		EndDate      string  `json:"end_date"`
+		DaysCount    float32 `json:"days_count"`
+		HalfDayStart int     `json:"half_day_start"`
+		HalfDayEnd   int     `json:"half_day_end"`
+		TimeOffType  struct {
+			Type       string `json:"type"`
+			Attributes struct {
+				ID       int    `json:"id"`
+				Name     string `json:"name"`
+				Category string `json:"category"`
+			} `json:"attributes"`
+		} `json:"time_off_type"`
+		Employee    employee `json:"employee"`
+		Certificate struct {
+			Status string `json:"status"`
+		} `json:"certificate"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+	} `json:"attributes"`
+}
+
 type abscenceResponse struct {
 	Success  bool `json:"success"`
 	Metadata struct {
@@ -61,34 +88,9 @@ type abscenceResponse struct {
 		CurrentPage   int `json:"current_page"`
 		TotalPages    int `json:"total_pages"`
 	} `json:"metadata"`
-	Data []struct {
-		Type       string `json:"type"`
-		Attributes struct {
-			ID           int     `json:"id"`
-			Status       string  `json:"status"`
-			StartDate    string  `json:"start_date"`
-			EndDate      string  `json:"end_date"`
-			DaysCount    float32 `json:"days_count"`
-			HalfDayStart int     `json:"half_day_start"`
-			HalfDayEnd   int     `json:"half_day_end"`
-			TimeOffType  struct {
-				Type       string `json:"type"`
-				Attributes struct {
-					ID       int    `json:"id"`
-					Name     string `json:"name"`
-					Category string `json:"category"`
-				} `json:"attributes"`
-			} `json:"time_off_type"`
-			Employee    employee `json:"employee"`
-			Certificate struct {
-				Status string `json:"status"`
-			} `json:"certificate"`
-			CreatedAt string `json:"created_at"`
-			UpdatedAt string `json:"updated_at"`
-		} `json:"attributes"`
-	} `json:"data"`
-	Offset int `json:"offset"`
-	Limit  int `json:"limit"`
+	Data   []apiEmployee `json:"data"`
+	Offset int           `json:"offset"`
+	Limit  int           `json:"limit"`
 }
 
 func isInslice(item string, list []string) bool {
@@ -137,6 +139,7 @@ func (p *Personio) GetAbsences() ([]Absentee, error) {
 		isMorningOff := isInslice(absentee, morningOff)
 		isAfternoonOff := isInslice(absentee, afternoonOff)
 
+		// person is off for the whole day
 		if isMorningOff && isAfternoonOff {
 			absentees = append(absentees, Absentee{
 				FullName: absentee,
@@ -145,6 +148,7 @@ func (p *Personio) GetAbsences() ([]Absentee, error) {
 			continue
 		}
 
+		// person is off in the morning only
 		if isMorningOff && !isAfternoonOff {
 			absentees = append(absentees, Absentee{
 				FullName: absentee,
@@ -153,6 +157,7 @@ func (p *Personio) GetAbsences() ([]Absentee, error) {
 			continue
 		}
 
+		// person is off in the afternoon
 		if !isMorningOff && isAfternoonOff {
 			absentees = append(absentees, Absentee{
 				FullName: absentee,
@@ -165,6 +170,29 @@ func (p *Personio) GetAbsences() ([]Absentee, error) {
 	}
 
 	return absentees, nil
+}
+
+func capitalize(str string) string {
+	if len(str) == 1 {
+		return strings.ToUpper(str)
+	}
+	return strings.ToUpper(str[:1]) + str[1:]
+}
+
+func tryGetGivenName(employee apiEmployee) (string, error) {
+	emailParts := strings.SplitN(
+		strings.SplitN(employee.Attributes.Employee.Attributes.Email.Value, "@", 2)[0],
+		".", 2,
+	)
+
+	if len(emailParts) != 2 {
+		return fmt.Sprintf("%s %s",
+			employee.Attributes.Employee.Attributes.FirstName.Value,
+			employee.Attributes.Employee.Attributes.LastName.Value,
+		), nil
+	}
+
+	return fmt.Sprintf("%s %s", capitalize(emailParts[0]), capitalize(emailParts[1])), nil
 }
 
 func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
@@ -183,7 +211,6 @@ func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
 	for {
 		params := url.Values{}
 		params.Add("limit", fmt.Sprintf("%d", queryLimit))
-		// weird bug where page=0 and page=1 return same results from Pzersonio API. so just immediately fetch page=1
 		params.Add("offset", fmt.Sprintf("%d", page+1))
 		params.Add("start_date", checkDateFormatted)
 		params.Add("end_date", checkDateFormatted)
@@ -227,10 +254,13 @@ func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
 			Debug("received abscences")
 
 		for _, data := range response.Data {
-			absentees = append(absentees,
-				data.Attributes.Employee.Attributes.FirstName.Value+" "+
-					data.Attributes.Employee.Attributes.LastName.Value,
-			)
+			fullName, err := tryGetGivenName(data)
+			if err != nil {
+				return nil, fmt.Errorf("could not get full name for %s: %w",
+					data.Attributes.Employee.Attributes.Email.Value, err)
+			}
+
+			absentees = append(absentees, fullName)
 		}
 
 		// Determine if there are more pages to fetch
