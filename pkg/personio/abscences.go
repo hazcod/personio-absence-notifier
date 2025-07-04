@@ -3,6 +3,7 @@ package personio
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"net/url"
@@ -115,6 +116,8 @@ func uniqueSlice(s []string) []string {
 	return result
 }
 
+// https://developer.personio.de/v1.0/reference/get_company-time-offs
+
 func (p *Personio) GetAbsences() ([]Absentee, error) {
 	now := time.Now()
 	nowZero := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -208,11 +211,13 @@ func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
 	for {
 		params := url.Values{}
 		params.Add("limit", fmt.Sprintf("%d", queryLimit))
-		params.Add("offset", fmt.Sprintf("%d", page+1))
+		params.Add("offset", fmt.Sprintf("%d", page))
 		params.Add("start_date", checkDateFormatted)
 		params.Add("end_date", checkDateFormatted)
 
 		fullURL := fmt.Sprintf("%s?%s", timeOffURL, params.Encode())
+
+		p.logger.WithField("url", fullURL).Debug("getting absentees")
 
 		req, err := http.NewRequest(http.MethodGet, fullURL, nil)
 		if err != nil {
@@ -235,6 +240,10 @@ func (p *Personio) retrieveAbsences(checkDate time.Time) ([]string, error) {
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
 			return nil, fmt.Errorf("could not read abscences: %w", err)
+		}
+
+		if p.logger.IsLevelEnabled(logrus.DebugLevel) {
+			p.logger.Println(string(body))
 		}
 
 		var response abscenceResponse
