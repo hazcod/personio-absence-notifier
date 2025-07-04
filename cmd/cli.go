@@ -18,6 +18,7 @@ func main() {
 	logger.SetLevel(logrus.InfoLevel)
 
 	confFile := flag.String("config", "config.yml", "The YAML configuration file.")
+	dryMode := flag.Bool("dry", false, "Don't actually send messages.")
 	flag.Parse()
 
 	conf := config.Config{}
@@ -70,6 +71,11 @@ func main() {
 		default:
 			logger.WithField("type", absentee.Type).Fatal("unknown type")
 		}
+	}
+
+	if *dryMode {
+		logger.Println(message)
+		os.Exit(0)
 	}
 
 	slacker, err := slack.New(logger, conf.Slack.WebhookURL)

@@ -2,7 +2,7 @@
 all: run
 
 run:
-	go run ./cmd/... -config=dev.yml
+	go run ./cmd/... -config=dev.yml -dry
 
 build:
 	$$GOPATH/bin/goreleaser build --config=.github/goreleaser.yml --clean --snapshot
