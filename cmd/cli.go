@@ -44,7 +44,7 @@ func main() {
 		logger.WithError(err).Fatal("failed to create Personio client")
 	}
 
-	absentees, err := pers.GetAbsences()
+	absentees, err := pers.GetTimeOffs()
 	if err != nil {
 		logger.WithError(err).Fatal("failed to get absences")
 	}
